@@ -84,7 +84,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.nouvelle_schema = "recolement"
         self.ancienne_schema = ""
 
-        
+        self.groupe_comparaison2="COMPARAISON COPIE"
         self.groupe_comparaison="COMPARAISON"
         self.croisement_lignes_nom="bd_croisement_lignes"
         self.croisement_points_nom="bd_croisement_points"
@@ -145,22 +145,15 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         layout_attributs.addWidget(self.canvas_attributs)
 
         
-        
-
-
-        self.get_croisement()
-        self.set_label_precision()
-        
-        self.set_graphe_general()
-        self.set_graphe_tables()
-        self.listProjets()
-        self.set_theme_comparaion()
-        self.controle_admissibilite()
-
         self.GROUP_NAME = ""
         self.GROUP_NAME2 = ""
-        self.copier_group()
 
+
+        
+        self.set_label_precision()
+        #self.chemain_comparaison()
+
+        self.initialiser_affichage()
         
 
         self.horizontalSlider_precision.valueChanged.connect(self.set_label_precision)
@@ -181,7 +174,106 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
     
         self.attributs_details.currentTextChanged.connect(self.visualiser_details)
-    
+    def initialiser_affichage(self):
+        self.get_croisement()
+        self.set_graphe_general()
+        self.listProjets()
+        self.set_theme_comparaion()
+        #self.controle_admissibilite()
+        self.copier_group()
+
+
+    def chemain_comparaison(self):
+        user_profile = os.environ.get("USERPROFILE")
+        gpkg_path = os.path.join(
+            user_profile,
+            "AppData",
+            "Roaming",
+            "QGIS",
+            "QGIS3",
+            "profiles",
+            "default",
+            "python",
+            "plugins",
+            "controle",
+            "core",
+            "gestfolio_temp",
+            "bd_croisement_gestfolio.gpkg"
+        )
+        gpkg_path2 = os.path.join(
+            user_profile,
+            "AppData",
+            "Roaming",
+            "QGIS",
+            "QGIS3",
+            "profiles",
+            "default",
+            "python",
+            "plugins",
+            "controle",
+            "core",
+            "gestfolio_temp",
+            "bd_folios_gestfolio.gpkg"
+        )
+        gpkg_path = gpkg_path.replace("\\", "/")
+        root = QgsProject.instance().layerTreeRoot()
+        group = root.findGroup(self.groupe_comparaison)
+
+        for child in group.children():
+            layer = child.layer()
+            if layer:
+                if layer.name() == 'bd_folios_gestfolio':
+                    # 1. Sauvegarder le renderer
+                    renderer = layer.renderer().clone()
+
+                    # 2. Changer la source
+                    new_source = f"{gpkg_path2}|layername=bd_folios_gestfolio"
+                    layer.setDataSource(new_source, layer.name(), "ogr")
+
+                    # 3. Restaurer le renderer
+                    layer.setRenderer(renderer)
+                    layer.triggerRepaint()
+                else :
+                    # 1. Sauvegarder le renderer
+                    renderer = layer.renderer().clone()
+
+                    # 2. Changer la source
+                    new_source = f"{gpkg_path}|layername=bd_croisement_gestfolio"
+                    layer.setDataSource(new_source, layer.name(), "ogr")
+
+                    # 3. Restaurer le renderer
+                    layer.setRenderer(renderer)
+                    layer.triggerRepaint()
+        group = root.findGroup(self.groupe_comparaison2)
+
+        for child in group.children():
+            layer = child.layer()
+            if layer:
+                if layer.name() == 'bd_folios_gestfolio':
+                    # 1. Sauvegarder le renderer
+                    renderer = layer.renderer().clone()
+
+                    # 2. Changer la source
+                    new_source = f"{gpkg_path2}|layername=bd_folios_gestfolio"
+                    layer.setDataSource(new_source, layer.name(), "ogr")
+
+                    # 3. Restaurer le renderer
+                    layer.setRenderer(renderer)
+                    layer.triggerRepaint()
+                else :
+                    # 1. Sauvegarder le renderer
+                    renderer = layer.renderer().clone()
+
+                    # 2. Changer la source
+                    new_source = f"{gpkg_path}|layername=bd_croisement_gestfolio"
+                    layer.setDataSource(new_source, layer.name(), "ogr")
+
+                    # 3. Restaurer le renderer
+                    layer.setRenderer(renderer)
+                    layer.triggerRepaint()
+        # Faire la meme chose pour le masque 
+
+
     def copier_group(self):
         self.GROUP_NAME = "RECOLEMENT EXISTANT"
         self.GROUP_NAME2 = "NOUVEAU RECOLEMENT"
@@ -295,7 +387,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                                             )
             for i in range( 1,n):
                 if self.TrueClasses[i]:
-                    self.lignes[niveau]["classe"] += "|" + self.lignes[niveau][self.ListClasses[i]]
+                    self.lignes[niveau]["classe"] += "|" + self.lignes[niveau][self.ListClasses[i]].astype(str)
             if True in self.TrueClasses :
                 pass
             else :
@@ -314,7 +406,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                                             )
             for i in range( 1,n ):
                 if self.TrueClasses[i]:
-                    self.points[niveau]["classe"] += "|" + self.points[niveau][self.ListClasses[i]]
+                    self.points[niveau]["classe"] += "|" + self.points[niveau][self.ListClasses[i]].astype(str)
             if True in self.TrueClasses :
                 pass
             else :
@@ -333,7 +425,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                                             )
             for i in range( 1,n ):
                 if self.TrueClasses[i]:
-                    self.polygones[niveau]["classe"] += "|" + self.polygones[niveau][self.ListClasses[i]]
+                    self.polygones[niveau]["classe"] += "|" + self.polygones[niveau][self.ListClasses[i]].astype(str)
             if True in self.TrueClasses :
                 pass
             else :
@@ -341,7 +433,12 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             grp_polygones = self.polygones[niveau].groupby(["classe", "croisement"])["valeur"].sum().unstack(fill_value=0)
         else:
             grp_polygones = pd.DataFrame()
-
+        if grp_lignes.empty and grp_points.empty and grp_polygones.empty:
+            self.figure_general.clear()
+            self.canvas_general.draw()
+            self.figure_tables.clear()
+            self.canvas_tables.draw()
+            return
             # projets communs
         projets = sorted(set(grp_lignes.index).union(grp_points.index).union(grp_polygones.index))
         grp_lignes = grp_lignes.reindex(projets, fill_value=0)
@@ -454,6 +551,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.selected_classe = None
         self.classes = projets
         self.filtre_niveau()
+        self.set_graphe_tables()
         
 
     def set_theme_comparaion(self):
@@ -599,8 +697,6 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             df_polygones = self.polygones[niveau].copy()
         else :
             df_polygones = pd.DataFrame()
-        if df_lignes.empty and df_points.empty and df_polygones.empty:
-            return
 
         # ---------------- GROUPEMENT PAR TABLE_NAME ET CROISEMENT ----------------
         if not df_lignes.empty: 
@@ -725,20 +821,6 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                         }
                     left_l += vals
 
-        # AJOUT DES SYMBOLES
-        """symbols = {
-            "ligne": "▬",
-            "point": "●",
-            "polygone": "■"
-        }
-        for i in range(len(tables)):
-            if not grp_lignes.empty:
-                ax.text(left_l[i], y[i], symbols["ligne"], va='center')
-            if not grp_points.empty:
-                ax2.text(left_p[i], y[i], symbols["point"], va='center')
-            if not grp_polygones.empty:
-                ax2.text(left_poly[i], y[i], symbols["polygone"], va='center')"""
-
         # ---------------- AXES ----------------
         
         ax.set_yticks(y)
@@ -748,6 +830,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         ax.set_title(f"Objets par table et type de croisement ({self.niveau})")
 
         #ax.legend(title="Croisement")
+        
         self.figure_tables.tight_layout()
         self.canvas_tables.draw()
 
@@ -758,7 +841,253 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.attributs_details.clear()
 
         self.canvas_tables.mpl_connect("button_press_event", self.on_table)
-        
+    """def set_graphe_tables(self):
+        niveau = self.niveau
+        df_lignes = self.lignes[niveau].copy()
+        df_points = self.points[niveau].copy()
+        if niveau == 'topo':
+            df_polygones = self.polygones[niveau].copy()
+        else :
+            df_polygones = pd.DataFrame()
+        if df_lignes.empty and df_points.empty and df_polygones.empty:
+            return
+
+        # ---------------- GROUPEMENT PAR TABLE_NAME ET CROISEMENT ----------------
+        if not df_lignes.empty: 
+            if self.selected_classe is not None:
+                df_lignes['croisement'] = np.where(
+                        df_lignes['classe'] == self.selected_classe,
+                        df_lignes['croisement'],  
+                        'NOT_SELECTED'            
+                    )
+            grp_lignes = df_lignes.groupby(["table_name", "croisement"])["valeur"].sum().unstack(fill_value=0)
+            grp_lignes['total'] = grp_lignes.sum(axis=1)
+            
+            # Trie par la colonne total décroissante
+            grp_lignes = grp_lignes.sort_values(by='total')
+            
+            # Supprime la colonne temporaire total
+            grp_lignes = grp_lignes.drop(columns='total')
+        else:
+            grp_lignes = pd.DataFrame()
+
+        if not df_points.empty:
+            if self.selected_classe is not None:
+                df_points['croisement'] = np.where(
+                        df_points['classe'] == self.selected_classe,
+                        df_points['croisement'],  
+                        'NOT_SELECTED'            
+                    )
+            grp_points = df_points.groupby(["table_name", "croisement"])["valeur"].sum().unstack(fill_value=0)
+            grp_points['total'] = grp_points.sum(axis=1)
+            
+            # Trie par la colonne total décroissante
+            grp_points = grp_points.sort_values(by='total')
+            # Supprime la colonne temporaire total
+            grp_points = grp_points.drop(columns='total')
+        else:
+            grp_points = pd.DataFrame()
+
+        if not df_polygones.empty:
+            if self.selected_classe is not None:
+                df_polygones['croisement'] = np.where(
+                        df_polygones['classe'] == self.selected_classe,
+                        df_polygones['croisement'],  
+                        'NOT_SELECTED'            
+                    )
+            grp_polygones = df_polygones.groupby(["table_name", "croisement"])["valeur"].sum().unstack(fill_value=0)
+            grp_polygones['total'] = grp_polygones.sum(axis=1)
+            
+            # Trie par la colonne total décroissante
+            grp_polygones = grp_polygones.sort_values(by='total')
+            
+            # Supprime la colonne temporaire total
+            grp_polygones = grp_polygones.drop(columns='total')
+        else:
+            grp_polygones = pd.DataFrame()
+
+        # ---------------- PROJETS COMMUNS ----------------
+        tables = list(grp_lignes.index) + list(grp_points.index) + list(grp_polygones.index)
+        grp_polygones = grp_polygones.reindex(tables, fill_value=0)
+        grp_points = grp_points.reindex(tables, fill_value=0)
+        grp_lignes = grp_lignes.reindex(tables, fill_value=0)
+        # ---------------- CONFIGURATION DU PLOT ----------------
+        self.figure_tables.clear()
+
+        gs = self.figure_tables.add_gridspec(2, 1, height_ratios=[3, 1])
+
+        ax = self.figure_tables.add_subplot(gs[0])
+        ax2 = ax.twiny()
+        ax_geo = self.figure_tables.add_subplot(gs[1])
+
+        height = 0.70
+
+        couleurs = {
+            "CONSERVATION_IDENTIQUE": "#074A69",
+            "CONSERVATION_MODIFIEE": "#048B9A",
+            "CREATION": "#10b642",
+            "SUPPRESSION": "#c74747",
+            "NOT_SELECTED": "#BDC5D0"
+        }
+
+        self.tables_graph = {}
+
+        geo_name = "geo_r_0_0_1"
+
+        # =====================================================
+        # 🔥 SPLIT SIMPLE DES TABLES
+        # =====================================================
+        tables_haut = [t for t in tables if t != geo_name]
+
+        y = np.arange(len(tables_haut))
+
+        # =====================================================
+        # 🟢 FONCTION SAFE POUR RECUP VALEURS
+        # =====================================================
+        def get_vals(df, col):
+            return [
+                df[col].iloc[i] if col in df.columns else 0
+                for i, t in enumerate(tables)
+                if t != geo_name
+            ]
+
+        # =====================================================
+        # 🟢 POLYGONES
+        # =====================================================
+        if not grp_polygones.empty:
+            left_poly = np.zeros(len(tables_haut))
+
+            for col in couleurs:
+                if col in grp_polygones.columns:
+                    vals = get_vals(grp_polygones, col)
+
+                    bars = ax2.barh(
+                        y, vals, height,
+                        left=left_poly,
+                        color=couleurs[col],
+                        picker=True
+                    )
+
+                    for i, bar in enumerate(bars):
+                        self.tables_graph[bar] = {
+                            "table": tables_haut[i],
+                            "classe": col,
+                            "type_geom": "polygone"
+                        }
+
+                    left_poly += vals
+
+        # =====================================================
+        # 🟢 POINTS
+        # =====================================================
+        if not grp_points.empty:
+            left_p = np.zeros(len(tables_haut))
+
+            for col in couleurs:
+                if col in grp_points.columns:
+                    vals = get_vals(grp_points, col)
+
+                    bars = ax2.barh(
+                        y, vals, height,
+                        left=left_p,
+                        color=couleurs[col],
+                        picker=True
+                    )
+
+                    for i, bar in enumerate(bars):
+                        self.tables_graph[bar] = {
+                            "table": tables_haut[i],
+                            "classe": col,
+                            "type_geom": "point"
+                        }
+
+                    left_p += vals
+
+        # =====================================================
+        # 🟢 LIGNES
+        # =====================================================
+        if not grp_lignes.empty:
+            left_l = np.zeros(len(tables_haut))
+
+            for col in couleurs:
+                if col in grp_lignes.columns:
+                    vals = get_vals(grp_lignes, col)
+
+                    bars = ax.barh(
+                        y, vals, height,
+                        left=left_l,
+                        color=couleurs[col],
+                        picker=True
+                    )
+
+                    for i, bar in enumerate(bars):
+                        self.tables_graph[bar] = {
+                            "table": tables_haut[i],
+                            "classe": col,
+                            "type_geom": "ligne"
+                        }
+
+                    left_l += vals
+
+        # =====================================================
+        # 🔵 AXE HAUT
+        # =====================================================
+        ax.set_yticks(y)
+        ax.set_yticklabels(tables_haut, fontsize=8)
+        ax.set_xlabel("Longueur des lignes")
+        ax2.set_xlabel("Points / Polygones")
+
+        ax.set_title(f"Objets par table et type de croisement ({self.niveau})")
+
+        # =====================================================
+        # 🔥 ZOOM BAS (ULTRA SIMPLE ET FIABLE)
+        # =====================================================
+
+        geo_value = 0
+
+        if geo_name in tables:
+
+            left_l = 0
+
+            for col in couleurs:
+
+                if col in grp_points.columns:
+
+                    geo_value = grp_points.loc[geo_name, col]
+
+                    bars =ax_geo.barh(
+                        geo_name,
+                        geo_value,
+                        height,
+                        left=left_l,
+                        color=couleurs[col],
+                        picker=True
+                    )
+                    for i, bar in enumerate(bars):
+                        self.tables_graph[bar] = {
+                            "table": geo_name,
+                            "classe": col,
+                            "type_geom": "point"
+                        }
+                    left_l += geo_value
+
+        else:
+            ax_geo.text(0.5, 0.5, "geo_r_0_0_1 non trouvé",
+                        ha='center', va='center')
+
+        ax_geo.set_yticks([0])
+        ax_geo.set_yticklabels([geo_name], fontsize=8)
+        ax_geo.set_xlabel("Points GPS")
+        ax_geo.grid(True, axis='x', alpha=0.3)
+
+        # =====================================================
+        # FINAL
+        # =====================================================
+        self.figure_tables.tight_layout()
+        self.canvas_tables.draw()
+
+        self.set_theme_comparaion()
+        self.canvas_tables.mpl_connect("button_press_event", self.on_table)"""
 
     def on_table(self, event):
         for bar, info in self.tables_graph.items():
@@ -768,41 +1097,47 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                 self.selected_state=info['classe']
                 self.selected_geom=info['type_geom']
                 
-                if self.selected_state != "SUPPRESSION":
-                    self.select_objets()
-                    self.get_layer()
-                    self.select_objets_by_ids()
-                    self.list_choix()
-                    self.set_theme()
-                else :
+                #if self.selected_state != "SUPPRESSION":
+                self.select_objets()
+                self.get_layer()
+                self.select_objets_by_ids()
+                self.list_choix()
+                self.set_theme()
+                """else :
                     self.figure_attributs.clear()
                     self.canvas_attributs.draw()
                     self.attributs_details.clear()
-                    self.set_theme_comparaion()
+                    self.set_theme_comparaion()"""
                 break
     def list_choix(self):
         if self.selected_state == "CONSERVATION_MODIFIEE":
             self.list_methodes()
-        elif self.selected_state == "CREATION":
-            self.list_attributs()
         else :
+            self.list_attributs()
+        """else :
             self.figure_attributs.clear()
             self.canvas_attributs.draw()
-            self.attributs_details.clear()
+            self.attributs_details.clear()"""
     def visualiser_details(self):
         if self.selected_state == "CONSERVATION_MODIFIEE":
             self.visualiser_modifications()
-        elif self.selected_state == "CREATION":
+        elif self.selected_state != "NOT_SELECTED":
             self.visualiser_attributs()
         
 
     def get_layer(self):
         if self.selected_layer :
             self.selected_layer.removeSelection()
-        if self.niveau =='topo':
-            groupe =QgsProject.instance().layerTreeRoot().findGroup(self.nouvelle_topo_group)
+        if self.selected_state !='SUPPRESSION':
+            if self.niveau =='topo':
+                groupe =QgsProject.instance().layerTreeRoot().findGroup(self.nouvelle_topo_group)
+            else :
+                groupe =QgsProject.instance().layerTreeRoot().findGroup(self.nouveau_reseau_group)
         else :
-            groupe =QgsProject.instance().layerTreeRoot().findGroup(self.nouveau_reseau_group)
+            if self.niveau =='topo':
+                groupe =QgsProject.instance().layerTreeRoot().findGroup(self.topo_existante_group)
+            else :
+                groupe =QgsProject.instance().layerTreeRoot().findGroup(self.reseau_existant_group)
         if groupe:
             for layer in groupe.findLayers():
                     if layer.layer().name() == self.selected_table :
@@ -892,6 +1227,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.canvas_attributs.draw()
 
     def select_objets_by_ids(self):
+        QgsMessageLog.logMessage(f"comparaison projet - : {self.selected_ids}", "MonPlugin", Qgis.Info)
         # Liste des IDs à filtrer
         ids = self.selected_ids
         self.selected_layer.selectByIds(list(ids))
@@ -900,9 +1236,9 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         selected_features = []
         
         # Parcours toutes les entités du layer
-        for feature in self.selected_layer.getFeatures():
-            if feature['gid'] in ids:
-                selected_features.append(feature)
+        for feature in self.selected_layer.selectedFeatures():
+            selected_features.append(feature)
+        QgsMessageLog.logMessage(f"comparaison projet : {selected_features}", "MonPlugin", Qgis.Info)
         # Crée le DataFrame à partir des attributs
         rows = [f.attributes() for f in selected_features]
         self.columns = [field.name() for field in self.selected_layer.fields()]
@@ -959,6 +1295,13 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
 
     def visualiser_attributs(self):
+        couleurs = {
+            "CONSERVATION_IDENTIQUE": "#074A69",
+            "CONSERVATION_MODIFIEE": "#048B9A",
+            "CREATION": "#10b642",
+            "SUPPRESSION": "#c74747",
+            "NOT_SELECTED" :"#BDC5D0"
+        }        
         column = self.attributs_details.currentText()
         if column != '':
             # tracer le diagramme horizontal
@@ -969,7 +1312,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                 for k in self.columns_details[column].keys()
             ]
             # barres horizontales
-            self.bars = ax.barh(keys, list(self.columns_details[column].values()),color = "#10b642", picker=True)
+            self.bars = ax.barh(keys, list(self.columns_details[column].values()),color = couleurs[self.selected_state] , picker=True)
 
             ax.set_title(self.selected_table)
             if self.selected_geom == 'ligne' :
@@ -984,20 +1327,23 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             self.canvas_attributs.draw()
 
     # Paramètres du plugin
-    def TOPO(self):
-        self.update_niveau(False,'topo')
-    def ELEC(self):
-        self.update_niveau(True,'elec')
-    def EP(self):
-        self.update_niveau(True,'ep')
-    def GAZ(self):
-        self.update_niveau(True,'gaz')
+    def TOPO(self, checked):
+        if checked :
+            self.update_niveau(False,'topo')
+    def ELEC(self, checked):
+        if checked :
+            self.update_niveau(True,'elec')
+    def EP(self, checked):
+        if checked :
+            self.update_niveau(True,'ep')
+    def GAZ(self, checked):
+        if checked :
+            self.update_niveau(True,'gaz')
     def update_niveau(self,visible,niveau) :
         self.niveau = niveau
         self.projet.setEnabled(visible)
         self.nouveau.setEnabled(visible)
         self.set_graphe_general()
-        self.set_graphe_tables()
         self.listProjets()
 
     def update_classes(self):
@@ -1111,8 +1457,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         precision = precision * 0.001
         comparer(conn,precision)
         rafraichir()
-        self.copier_group()
-        self.set_theme_comparaion()
+        self.initialiser_affichage()
     
     
     def controle_admissibilite(self):
@@ -1145,49 +1490,233 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             ["grpe_objet", "table_name", "attributs_modif", "gid_nouv"]
         ].copy()
 
-        # Ajout colonne schema correctement
-        df_croisement_creation["schema"] = df_croisement_creation["grpe_objet"].apply(
-            lambda x: "TOPO" if x == "topo" else "RECOL"
-        )
+        croisement_creation_dict = {
+            'TOPO': df_croisement_creation[df_croisement_creation["grpe_objet"] == "topo"]
+                        .groupby("table_name")["gid_nouv"]
+                        .agg(set)
+                        .to_dict(),
 
-        df_croisement_modification["schema"] = df_croisement_modification["grpe_objet"].apply(
-            lambda x: "TOPO" if x == "topo" else "RECOL"
-        )
+            'RECOL': df_croisement_creation[df_croisement_creation["grpe_objet"] != "topo"]
+                        .groupby("table_name")["gid_nouv"]
+                        .agg(set)
+                        .to_dict()
+        }
         
-        croisement_creation = {'TOPO':df_croisement_creation[df_croisement_creation["grpe_objet"]== "topo"], 
-                               'RECOL':df_croisement_creation[df_croisement_creation["grpe_objet"]!= "topo"]}
-        croisement_modification = {'TOPO':df_croisement_modification[df_croisement_modification["grpe_objet"]== "topo"], 
-                                   'RECOL':df_croisement_modification[df_croisement_modification["grpe_objet"]!= "topo"]}
+
+        croisement_modification_dict = {
+            'TOPO': df_croisement_modification[df_croisement_modification["grpe_objet"] == "topo"]
+                        .groupby(["table_name","attribut_modif"])["gid_nouv"]
+                        .agg(set)
+                        .to_dict(),
+
+            'RECOL': df_croisement_modification[df_croisement_modification["grpe_objet"] != "topo"]
+                        .groupby(["table_name","attribut_modif"])["gid_nouv"]
+                        .agg(set)
+                        .to_dict()
+        }
+        croisement_modification_dict2 = {'TOPO':{},'RECOL':{}}
+        for (table, attributs), gids in croisement_modification_dict['TOPO'].items() :
+            if table not in croisement_modification_dict2['TOPO']:
+                croisement_modification_dict2['TOPO'][table] = set()
+            attributs = attributs.split('|')
+            for attribut in attributs :
+                if attribut not in croisement_modification_dict2['TOPO'][table] :
+                    croisement_modification_dict2['TOPO'][table][attribut] = set()
+                croisement_modification_dict2['TOPO'][table][attribut].update(gids)
+                
+
         
-        QgsMessageLog.logMessage(f"{croisement_creation}", "MonPlugin", Qgis.Info)
-        QgsMessageLog.logMessage(f"{croisement_modification}", "MonPlugin", Qgis.Info)
+
+        croisement_dict = {'CREATION':{'TOPO':{},'RECOL':{}},'MODIFICATION':{'TOPO':{},'RECOL':{}}}
+        synthese = pd.DataFrame()
+        groupe = QgsProject.instance().layerTreeRoot().findGroup(self.nouvelle_topo_group)
+        if groupe:
+            for layer in groupe.findLayers():
+                    table_name = layer.layer().name()
+                    if table_name in croisement_creation_dict['TOPO'] :
+                        
+                        ids = croisement_creation_dict['TOPO'][table_name]
+                        cols = [field.name() for field in layer.layer().fields()]
+                        data = pd.DataFrame(
+                            [
+                                f.attributes()
+                                for f in layer.layer().getFeatures()
+                                if f['gid'] in ids
+                            ],
+                            columns=cols
+                        )
+                        rules = df_rules[
+                            (
+                                (df_rules['nom_niveau'] == 'TOPO') |
+                                (df_rules['nom_niveau'] == '<< TOUS >>')
+                            )
+                            &
+                            (
+                                (df_rules['code_objet'] == '<< TOUS >>') |
+                                (table_name == 'geo_' + df_rules['code_objet'].str.lower())
+                            )
+                        ]
+                        partie_synthese = self.layer_admissibilite( data, rules)
+                        partie_synthese['schema'] = 'TOPO'
+                        partie_synthese['nom_table'] = table_name
+                        synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
+                    if table_name in croisement_modification_dict2['TOPO'] :
+                        attributs = croisement_modification_dict2['TOPO'][table_name]
+                        ids = set().union(*attributs.values())
+                        rules = df_rules[
+                            (
+                                (df_rules['nom_niveau'] == 'TOPO') |
+                                (df_rules['nom_niveau'] == '<< TOUS >>')
 
 
-        """for niveau in data_lignes :
-            self.lignes[niveau] = pd.DataFrame(data_lignes[niveau])
-        for niveau in data_points :
-            self.points[niveau] = pd.DataFrame(data_points[niveau])
-        for niveau in data_polygones :
-            self.polygones[niveau] = pd.DataFrame(data_polygones[niveau])
-        """
-        """Pour la creation, il faut controler tous les attributs,
-        par contre pour la modification modifiée il faut controler surtout les attributs modifiées
-        dair un df pour tous les consérvations modifiées et les créations [grpe_objet, table_name, attributs_modif, gid_nouv] (une pour création et autre pour cons modif)
-        faire un dictionaire pour pour chaque type de croisement {'RECOLE':{nom_table:pd.DataFrame(),.....},'TOPO':{nom_table:pd.DataFrame(),.....}}
+                            )
+                            &
+                            (
+                                (df_rules['code_objet'] == '<< TOUS >>') |
+                                (table_name == 'geo_' + df_rules['code_objet'].str.lower())
+                            )
+                            &
+                            df_rules['nom_champobli'] in attributs
+                        ]
+                        data = pd.DataFrame(
+                            [
+                                f.attributes()
+                                for f in layer.layer().getFeatures()
+                                if f['gid'] in ids
+                            ],
+                            columns=cols
+                        )
+                        partie_synthese = self.layer_admissibilite2( data, rules)
+                        partie_synthese['schema'] = 'TOPO'
+                        partie_synthese['nom_table'] = table_name
+                        synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
         
-        
-        results = []
+        groupe = QgsProject.instance().layerTreeRoot().findGroup(self.nouveau_reseau_group)
+        if groupe:
+            for layer in groupe.findLayers():
+                    table_name = layer.layer().name()
+                    if table_name in croisement_creation_dict['RECOL'] :
+                        
+                        ids = croisement_creation_dict['RECOL'][table_name]
+                        cols = [field.name() for field in layer.layer().fields()]
+                        data = pd.DataFrame(
+                            [
+                                f.attributes()
+                                for f in layer.layer().getFeatures()
+                                if f['gid'] in ids
+                            ],
+                            columns=cols
+                        )
+                        rules = df_rules[
+                            (
+                                (df_rules['nom_niveau'] == 'RECOL') |
+                                (df_rules['nom_niveau'] == '<< TOUS >>')
+                            )
+                            &
+                            (
+                                (df_rules['code_objet'] == '<< TOUS >>') |
+                                (table_name == 'geo_' + df_rules['code_objet'].str.lower())
+                            )
+                        ]
+                        partie_synthese = self.layer_admissibilite( data, rules)
+                        partie_synthese['schema'] = 'RECOL'
+                        partie_synthese['nom_table'] = table_name
+                        synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
+                    if table_name in croisement_modification_dict2['RECOL'] :
+                        attributs = croisement_modification_dict2['RECOL'][table_name]
+                        ids = set().union(*attributs.values())
+                        rules = df_rules[
+                            (
+                                (df_rules['nom_niveau'] == 'RECOL') |
+                                (df_rules['nom_niveau'] == '<< TOUS >>')
 
+
+                            )
+                            &
+                            (
+                                (df_rules['code_objet'] == '<< TOUS >>') |
+                                (table_name == 'geo_' + df_rules['code_objet'].str.lower())
+                            )
+                            &
+                            df_rules['nom_champobli'] in attributs
+                        ]
+                        data = pd.DataFrame(
+                            [
+                                f.attributes()
+                                for f in layer.layer().getFeatures()
+                                if f['gid'] in ids
+                            ],
+                            columns=cols
+                        )
+                        partie_synthese = self.layer_admissibilite2( data, rules)
+                        partie_synthese['schema'] = 'RECOL'
+                        partie_synthese['nom_table'] = table_name
+                        synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
+        QgsMessageLog.logMessage(f"{croisement_dict}", "MonPlugin", Qgis.Info)
+    def layer_admissibilite2(self, df, attributs, df_rules) :
+        data = []
         for _, rule in df_rules.iterrows():
-            cond1 = True if rule["col1"] == "<< TOUS >>" else (df_data["col1"] == rule["col1"])
-            cond2 = True if rule["col2"] == "<< TOUS >>" else (df_data["col2"] == rule["col2"])
-            
-            subset = df_data[cond1 & cond2].copy()
-            subset["matched_rule"] = _
-            
-            results.append(subset)
+            col_name = rule['nom_campobli'].lower()
+            df = df[df['gid'] in attributs[col_name]]
+            valeurs = (
+                    df[col_name]
+                    .value_counts(dropna=False)
+                    .reset_index()
+            )
+            valeurs.columns = ['valeur', 'count']
+            for _, valeur in valeurs.iterrows():
+                if self.test(valeur['valeur'], rule['val_champobli']):
+                    data.append({
+                            'nom_attribut': rule['nom_champobli'],
+                            'valeur_refusee': valeur['valeur'],
+                            'valeurs_autorisees': rule['val_champobli'],
+                            'nombre': valeur['count']
+                    })
 
-        result = pd.concat(results, ignore_index=True)"""
+
+    def layer_admissibilite(self, df, df_rules):
+        data = []
+        for _, rule in df_rules.iterrows():
+            col_name = rule['nom_campobli'].lower()
+            if col_name not in df.columns:
+                data.append({
+                            'nom_attribut': rule['nom_champobli'],
+                            'valeur_refusee': 'attribut manquant',
+                            'valeurs_autorisees': rule['val_champobli'],
+                            'nombre': 0
+                        })
+            else :
+                valeurs = (
+                    df[col_name]
+                    .value_counts(dropna=False)
+                    .reset_index()
+                )
+                valeurs.columns = ['valeur', 'count']
+                for _, valeur in valeurs.iterrows():
+                    if self.test(valeur['valeur'], rule['val_champobli']):
+                        data.append({
+                            'nom_attribut': rule['nom_champobli'],
+                            'valeur_refusee': valeur['valeur'],
+                            'valeurs_autorisees': rule['val_champobli'],
+                            'nombre': valeur['count']
+                        })
+
+        return pd.DataFrame(data)
+
+    def test (self,val, rule) :
+        if rule == 'NON NUL':
+            if val is not None :
+                return False
+            else :
+                return True
+        else :
+            rule = rule.split("|")
+            if val in rule :
+                return False
+            else :
+                return True
+
+
 
 
     # ---------------------------------------------------- Close -----------------------------------------------

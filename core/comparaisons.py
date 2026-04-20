@@ -92,6 +92,7 @@ def comparer(con, precision):
                 """
         attributs=df(sql,con)
         attributs = attributs[~attributs['column_name'].isin(['geom', 'numfolio', 'natouv'])]
+        cols = ",".join([f'"{c}"' for c in attributs['column_name']])
         if t=='geo_r_0_0_1':#points GPS
             sql = f"""
                 SELECT column_name
@@ -99,9 +100,9 @@ def comparer(con, precision):
                 WHERE table_schema = 'recolement'
                 AND table_name = '{t}';
                 """
-            sql=f"SELECT ST_Normalize(geom) AS geometry, numfolio AS numfolio_recol, natouv,{",".join(list(attributs['column_name']))} FROM recolement."+t+";"
+            sql=f"SELECT ST_Normalize(geom) AS geometry, numfolio AS numfolio_recol, natouv,{cols} FROM recolement.{t};"
         else:
-            sql=f"SELECT ST_Normalize(geom) AS geometry, numfolio AS numfolio_recol,{",".join(list(attributs['column_name']))} FROM recolement."+t+";"
+            sql=f"SELECT ST_Normalize(geom) AS geometry, numfolio AS numfolio_recol,{cols} FROM recolement.{t};"
         bd_integration[t]=gdf(sql,con,geom_col='geometry')
         # explode est pour simplifier et reduire le stockage des géométries
         bd_integration[t]=bd_integration[t].explode(index_parts=True).reset_index(drop=True) 
@@ -130,10 +131,11 @@ def comparer(con, precision):
                 """
         attributs=df(sql,con)
         attributs = attributs[~attributs['column_name'].isin(['geom', 'numfolio', 'natouv'])]
+        cols = ",".join([f'"{c}"' for c in attributs['column_name']])
         if t=='geo_r_0_0_1':
-            sql=f"SELECT ST_Normalize(the_geom) AS geometry, numfolio AS numfolio, natouv,{",".join(list(attributs['column_name']))} FROM "+s+"."+t+" WHERE numfolio IN ('"+"','".join(ls_folios)+"');"
+            sql=f"SELECT ST_Normalize(the_geom) AS geometry, numfolio AS numfolio, natouv,{cols} FROM "+s+"."+t+" WHERE numfolio IN ('"+"','".join(ls_folios)+"');"
         else:
-            sql=f"SELECT ST_Normalize(the_geom) AS geometry, numfolio AS numfolio,{",".join(list(attributs['column_name']))} FROM "+s+"."+t+" WHERE numfolio IN ('"+"','".join(ls_folios)+"');"
+            sql=f"SELECT ST_Normalize(the_geom) AS geometry, numfolio AS numfolio,{cols} FROM "+s+"."+t+" WHERE numfolio IN ('"+"','".join(ls_folios)+"');"
         bd_existant[t]=gdf(sql,con,geom_col='geometry')
         bd_existant[t]['source']='EXISTANT'
         if bd_existant[t].shape[0]==0:
@@ -189,7 +191,7 @@ def comparer(con, precision):
         if not ancie_trace.empty :
             ancie_trace[['attributs_modif', 'modifications']] = ancie_trace.apply(
                 lambda row: pd.Series(attributs_identiques(row, attributs_compare)),
-                axis=1
+                axis = 1
             )
             
             conservation_identique = ancie_trace[ancie_trace['attributs_modif'].isna()]
@@ -207,12 +209,13 @@ def comparer(con, precision):
     
     bd_croisement_total=bd_croisement_total.set_geometry('geometry')
     bd_croisement_total=bd_croisement_total.merge(tables_res_topo_correspondantes,left_on='type_obj',right_on='table_name',how='left')
-
-    bd_croisement_total['projet'] = np.where(
-            (bd_croisement_total['croisement'] == 'CREATION') | (bd_croisement_total['croisement'] == 'SUPPRESSION'),
-            bd_croisement_total['projet'],
-            bd_croisement_total['projet_nouv']  
-        )
+    QgsMessageLog.logMessage(f"comparaison projet : {bd_croisement_total.columns}", "MonPlugin", Qgis.Info)
+    if 'projet_nouv' in ['projet_nouv'] : #bd_croisement_total.columns :
+        bd_croisement_total['projet'] = np.where(
+                (bd_croisement_total['croisement'] == 'CREATION') | (bd_croisement_total['croisement'] == 'SUPPRESSION'),
+                bd_croisement_total['projet'],
+                bd_croisement_total['projet_nouv']  
+            )
     
     bd_croisement_total['daterel2'] = bd_croisement_total['daterel']
     bd_croisement_total['daterel'] = pd.to_datetime(bd_croisement_total['daterel'], errors='coerce')
