@@ -24,26 +24,23 @@
 
 import os
 
-from qgis.PyQt import QtGui, QtWidgets, uic
-from qgis.PyQt.QtCore import pyqtSignal
-from qgis.core import QgsProject
-from qgis.core import NULL
+from qgis.PyQt import QtWidgets, uic
+from qgis.core import QgsProject, NULL,QgsMessageLog, Qgis, QgsDataSourceUri, QgsVectorLayer, QgsLayerTreeGroup,QgsWkbTypes
 from qgis.utils import iface
-from qgis.PyQt.QtWidgets import QToolButton
-from qgis.PyQt.QtWidgets import QProgressBar
+from qgis.PyQt.QtWidgets import QToolButton, QDialog, QVBoxLayout, QTextEdit, QApplication
+from qgis.PyQt.QtCore import pyqtSignal
 
 import pandas as pd
 import numpy as np
+import warnings
+import datetime
 
-from qgis.core import QgsMessageLog, Qgis
-from qgis.PyQt.QtWidgets import QApplication
 
 # Figures
 from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
 from matplotlib.backends.backend_qt5agg import NavigationToolbar2QT as NavigationToolbar
-from qgis.core import QgsDataSourceUri, QgsVectorLayer, QgsLayerTreeGroup
-import warnings
+
 
 # Importer les fonctions des comparaisons
 from .core.connexion import connecter
@@ -55,6 +52,22 @@ warnings.filterwarnings("ignore", category=DeprecationWarning)
 FORM_CLASS, _ = uic.loadUiType(os.path.join(
     os.path.dirname(__file__), 'Controle_dockwidget_base.ui'))
 
+class FenetreLogs(QDialog):
+    def __init__(self):
+        super().__init__()
+        self.setWindowTitle("Logs")
+        self.resize(500, 350)
+
+        layout = QVBoxLayout()
+        self.text = QTextEdit()
+        self.text.setReadOnly(True)
+
+        layout.addWidget(self.text)
+        self.setLayout(layout)
+
+    def log(self, message, color="black"):
+        self.text.append(f'<span style="color:{color};">{message}</span>')
+        QApplication.processEvents()
 
 class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
@@ -73,7 +86,12 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         # --------Variables des couches de comparaison
         self.precisions={1:1,2:5,3:10,4:50,5:100}
 
-        
+        """
+        Exemple de noms :
+        RecoSync
+        PorteData ou DataGate ou ConformGate
+        ValiRéco
+        """
 
         # Les nom des groupe et des couches dans le projet
         self.nouveau_reseau_group = "NOUVEAU RECOLEMENT"
@@ -148,10 +166,16 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.GROUP_NAME = ""
         self.GROUP_NAME2 = ""
 
+        """Source
+        C:/Users/imane.belhafiane/AppData/Roaming/QGIS/QGIS3/profiles/
+        default/python/plugins/controle/core/gestfolio_temp/
+        bd_croisement_gestfolio.gpkg|layername=bd_croisement_gestfolio|
+        geometrytype=Point25D"""
+        
 
         
         self.set_label_precision()
-        #self.chemain_comparaison()
+        self.chemain_comparaison()
 
         self.initialiser_affichage()
         
@@ -178,100 +202,102 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.get_croisement()
         self.set_graphe_general()
         self.listProjets()
-        self.set_theme_comparaion()
-        #self.controle_admissibilite()
         self.copier_group()
+        self.controle_admissibilite()
+        self.set_theme_comparaion()
 
 
     def chemain_comparaison(self):
+
         user_profile = os.environ.get("USERPROFILE")
+
         gpkg_path = os.path.join(
             user_profile,
-            "AppData",
-            "Roaming",
-            "QGIS",
-            "QGIS3",
-            "profiles",
-            "default",
-            "python",
-            "plugins",
-            "controle",
-            "core",
-            "gestfolio_temp",
+            "AppData","Roaming","QGIS","QGIS3","profiles","default",
+            "python","plugins","controle","core","gestfolio_temp",
             "bd_croisement_gestfolio.gpkg"
         )
         gpkg_path2 = os.path.join(
             user_profile,
-            "AppData",
-            "Roaming",
-            "QGIS",
-            "QGIS3",
-            "profiles",
-            "default",
-            "python",
-            "plugins",
-            "controle",
-            "core",
-            "gestfolio_temp",
+            "AppData","Roaming","QGIS","QGIS3","profiles","default",
+            "python","plugins","controle","core","gestfolio_temp",
             "bd_folios_gestfolio.gpkg"
         )
+
         gpkg_path = gpkg_path.replace("\\", "/")
+        gpkg_path2 = gpkg_path2.replace("\\", "/")
+
         root = QgsProject.instance().layerTreeRoot()
+
+        # ---------------------------
+        # Fonction utilitaire propre
+        # ---------------------------
+        geom = {
+            'bd_croisement_points': "Point25D",
+            'bd_croisement_lignes': "LineString25D",
+            'bd_croisement_polygones': "Polygon25D"
+        }
+        def update_layer(layer, new_source):
+            if not layer:
+                return
+
+            renderer = layer.renderer().clone()
+
+            if layer.name() in ['Masque', 'bd_folios_gestfolio'] :
+                layer.setDataSource(f"{new_source}", layer.name(), "ogr")
+            else:
+                layer.setDataSource(f"{new_source}|geometrytype={geom[layer.name()]}", layer.name(), "ogr")
+                
+
+            layer.setRenderer(renderer)
+            layer.triggerRepaint()
+
+        # ---------------------------
+        # GROUP 1
+        # ---------------------------
         group = root.findGroup(self.groupe_comparaison)
 
         for child in group.children():
             layer = child.layer()
+
             if layer:
+
                 if layer.name() == 'bd_folios_gestfolio':
-                    # 1. Sauvegarder le renderer
-                    renderer = layer.renderer().clone()
-
-                    # 2. Changer la source
                     new_source = f"{gpkg_path2}|layername=bd_folios_gestfolio"
-                    layer.setDataSource(new_source, layer.name(), "ogr")
-
-                    # 3. Restaurer le renderer
-                    layer.setRenderer(renderer)
-                    layer.triggerRepaint()
-                else :
-                    # 1. Sauvegarder le renderer
-                    renderer = layer.renderer().clone()
-
-                    # 2. Changer la source
+                else:
                     new_source = f"{gpkg_path}|layername=bd_croisement_gestfolio"
-                    layer.setDataSource(new_source, layer.name(), "ogr")
 
-                    # 3. Restaurer le renderer
-                    layer.setRenderer(renderer)
-                    layer.triggerRepaint()
+                update_layer(layer, new_source)
+
+        # ---------------------------
+        # GROUP 2
+        # ---------------------------
         group = root.findGroup(self.groupe_comparaison2)
 
         for child in group.children():
             layer = child.layer()
+
             if layer:
+
                 if layer.name() == 'bd_folios_gestfolio':
-                    # 1. Sauvegarder le renderer
-                    renderer = layer.renderer().clone()
-
-                    # 2. Changer la source
                     new_source = f"{gpkg_path2}|layername=bd_folios_gestfolio"
-                    layer.setDataSource(new_source, layer.name(), "ogr")
-
-                    # 3. Restaurer le renderer
-                    layer.setRenderer(renderer)
-                    layer.triggerRepaint()
-                else :
-                    # 1. Sauvegarder le renderer
-                    renderer = layer.renderer().clone()
-
-                    # 2. Changer la source
+                else:
                     new_source = f"{gpkg_path}|layername=bd_croisement_gestfolio"
-                    layer.setDataSource(new_source, layer.name(), "ogr")
 
-                    # 3. Restaurer le renderer
-                    layer.setRenderer(renderer)
-                    layer.triggerRepaint()
-        # Faire la meme chose pour le masque 
+                update_layer(layer, new_source)
+
+        # ---------------------------
+        # ROOT (masque global)
+        # ---------------------------
+        root_group = QgsProject.instance().layerTreeRoot()
+
+        for child in root_group.children():
+            if hasattr(child, "layer"):
+                layer = child.layer()
+
+                if layer and layer.name() == "Masque":
+                    new_source = f"{gpkg_path2}|layername=bd_folios_gestfolio"
+                    update_layer(layer, new_source)
 
 
     def copier_group(self):
@@ -641,7 +667,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         if self.selected_classe :
             self.filtre()
         else :
-            self.non_filtre()
+            self.filtre_niveau()
         for bar, info in self.general_bars.items():
             if self.selected_classe is None :
                 bar.set_alpha(1.0)  # barre sélectionnée
@@ -658,18 +684,31 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         i=1
         conditions=[]
         if self.TrueClasses[0] :
-            conditions.append(f'"projet" = \'{self.nouveau.currentText()}\'')
+            if filtre_conditions[i] == '**' :
+                conditions.append(f'"projet" = \'{self.nouveau.currentText()}\'')
         if self.TrueClasses[2] :
-            conditions.append(f'"mois" = \'{filtre_conditions[i]}\'')
+            if filtre_conditions[i] == 'NULL' :
+                conditions.append(f'"mois" is null')
+            else :
+                conditions.append(f'"mois" = \'{filtre_conditions[i]}\'')
             i = i+1
         elif self.TrueClasses[1] :
-            conditions.append(f'"annee" = \'{filtre_conditions[i]}\'')
+            if filtre_conditions[i] == 'NULL' :
+                conditions.append(f'"annee" is null')
+            else :
+                conditions.append(f'"annee" = \'{filtre_conditions[i]}\'')
             i = i+1
         if self.TrueClasses[3] :
-            conditions.append(f'"moeuvre" = \'{filtre_conditions[i]}\'')
+            if filtre_conditions[i] == 'NULL' :
+                conditions.append(f'"moeuvre" is null')
+            else :
+                conditions.append(f'"moeuvre" = \'{filtre_conditions[i]}\'')
             i+1
         if self.TrueClasses[4] :
-            conditions.append(f'"projet" = \'{filtre_conditions[i]}\'')
+            if filtre_conditions[i] == 'NULL' :
+                conditions.append(f'"projet" is null')
+            else :
+                conditions.append(f'"projet" = \'{filtre_conditions[i]}\'')
             i+1
 
         conditions.append(f'"grpe_objet" = \'{self.niveau}\'')
@@ -1097,7 +1136,10 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                 self.selected_state=info['classe']
                 self.selected_geom=info['type_geom']
                 
-                #if self.selected_state != "SUPPRESSION":
+                try:
+                    self.iface.mapCanvas().clearSelection()
+                except:
+                    pass
                 self.select_objets()
                 self.get_layer()
                 self.select_objets_by_ids()
@@ -1227,7 +1269,6 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.canvas_attributs.draw()
 
     def select_objets_by_ids(self):
-        QgsMessageLog.logMessage(f"comparaison projet - : {self.selected_ids}", "MonPlugin", Qgis.Info)
         # Liste des IDs à filtrer
         ids = self.selected_ids
         self.selected_layer.selectByIds(list(ids))
@@ -1238,7 +1279,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         # Parcours toutes les entités du layer
         for feature in self.selected_layer.selectedFeatures():
             selected_features.append(feature)
-        QgsMessageLog.logMessage(f"comparaison projet : {selected_features}", "MonPlugin", Qgis.Info)
+        #QgsMessageLog.logMessage(f"comparaison projet : {selected_features}", "MonPlugin", Qgis.Info)
         # Crée le DataFrame à partir des attributs
         rows = [f.attributes() for f in selected_features]
         self.columns = [field.name() for field in self.selected_layer.fields()]
@@ -1257,9 +1298,9 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
             
         
         # 
-        """self.selected_objets_by_ids['daterel'] = self.selected_objets_by_ids['daterel'].apply(
+        self.selected_objets_by_ids['daterel'] = self.selected_objets_by_ids['daterel'].apply(
                 lambda x: x.toString("dd/MM/yyyy") if x and hasattr(x, "toString") else None
-            )"""
+            )
         
         self.selected_objets_by_ids['detail'] = details
         #self.selected_objets_by_ids = self.selected_objets_by_ids.replace([None, NULL, ''], 'NULL')
@@ -1395,7 +1436,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         if self.layer_points is not None:
             cols = [field.name() for field in self.layer_points.fields()]
             for f in self.layer_points.getFeatures():
-                if f["grpe_objet"] != 'NR':
+                if f["grpe_objet"] != 'NR' :
                     d = dict(zip(cols, f.attributes()))
                     d["croisement"] = str(d["croisement"]).strip().upper()
                     d["valeur"] = 1
@@ -1449,15 +1490,19 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
         self.label_precision.setText(f"Précision : {self.precisions[self.horizontalSlider_precision.value()]} mm")
     
     def comparaison(self):
+        self.fenetre = FenetreLogs()
+        self.fenetre.show()
+        self.fenetre.log('Se connecter à la base de données...')
         conn = connecter()  # ou sélection via dialog
         if conn is None:
             print("Erreur : connexion introuvable")
             return
         precision = self.precisions[self.horizontalSlider_precision.value()]
         precision = precision * 0.001
-        comparer(conn,precision)
+        comparer(conn,precision,self.fenetre.log)
         rafraichir()
         self.initialiser_affichage()
+        self.fenetre.log('Les comparaisons sont términées avec succès !','green')
     
     
     def controle_admissibilite(self):
@@ -1467,7 +1512,6 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                 FROM  sw_pr_adm.t_pr_champobli;
                 """
         df_rules=df(sql,con)
-        QgsMessageLog.logMessage(f"{df_rules}", "MonPlugin", Qgis.Info)
 
         df_croisement= pd.DataFrame()
         for niveau in self.lignes:
@@ -1505,19 +1549,19 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
         croisement_modification_dict = {
             'TOPO': df_croisement_modification[df_croisement_modification["grpe_objet"] == "topo"]
-                        .groupby(["table_name","attribut_modif"])["gid_nouv"]
+                        .groupby(["table_name","attributs_modif"])["gid_nouv"]
                         .agg(set)
                         .to_dict(),
 
             'RECOL': df_croisement_modification[df_croisement_modification["grpe_objet"] != "topo"]
-                        .groupby(["table_name","attribut_modif"])["gid_nouv"]
+                        .groupby(["table_name","attributs_modif"])["gid_nouv"]
                         .agg(set)
                         .to_dict()
         }
         croisement_modification_dict2 = {'TOPO':{},'RECOL':{}}
         for (table, attributs), gids in croisement_modification_dict['TOPO'].items() :
             if table not in croisement_modification_dict2['TOPO']:
-                croisement_modification_dict2['TOPO'][table] = set()
+                croisement_modification_dict2['TOPO'][table] = {}
             attributs = attributs.split('|')
             for attribut in attributs :
                 if attribut not in croisement_modification_dict2['TOPO'][table] :
@@ -1527,7 +1571,6 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
 
         
 
-        croisement_dict = {'CREATION':{'TOPO':{},'RECOL':{}},'MODIFICATION':{'TOPO':{},'RECOL':{}}}
         synthese = pd.DataFrame()
         groupe = QgsProject.instance().layerTreeRoot().findGroup(self.nouvelle_topo_group)
         if groupe:
@@ -1557,12 +1600,15 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                             )
                         ]
                         partie_synthese = self.layer_admissibilite( data, rules)
-                        partie_synthese['schema'] = 'TOPO'
-                        partie_synthese['nom_table'] = table_name
-                        synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
+                        if not partie_synthese.empty :
+                            partie_synthese['schema'] = 'TOPO'
+                            partie_synthese['nom_table'] = table_name
+                            partie_synthese['coisement'] = 'CREATION'
+                            synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
                     if table_name in croisement_modification_dict2['TOPO'] :
                         attributs = croisement_modification_dict2['TOPO'][table_name]
-                        ids = set().union(*attributs.values())
+                        ids = set().union(*attributs.values()) if attributs else set()
+                        cols = [field.name() for field in layer.layer().fields()]
                         rules = df_rules[
                             (
                                 (df_rules['nom_niveau'] == 'TOPO') |
@@ -1576,7 +1622,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                                 (table_name == 'geo_' + df_rules['code_objet'].str.lower())
                             )
                             &
-                            df_rules['nom_champobli'] in attributs
+                            df_rules['nom_champobli'].isin(attributs.keys())
                         ]
                         data = pd.DataFrame(
                             [
@@ -1586,10 +1632,12 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                             ],
                             columns=cols
                         )
-                        partie_synthese = self.layer_admissibilite2( data, rules)
-                        partie_synthese['schema'] = 'TOPO'
-                        partie_synthese['nom_table'] = table_name
-                        synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
+                        partie_synthese = self.layer_admissibilite2( data, attributs, rules)
+                        if not partie_synthese.empty :
+                            partie_synthese['schema'] = 'TOPO'
+                            partie_synthese['nom_table'] = table_name
+                            partie_synthese['coisement'] = 'MODIFICATION'
+                            synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
         
         groupe = QgsProject.instance().layerTreeRoot().findGroup(self.nouveau_reseau_group)
         if groupe:
@@ -1619,12 +1667,15 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                             )
                         ]
                         partie_synthese = self.layer_admissibilite( data, rules)
-                        partie_synthese['schema'] = 'RECOL'
-                        partie_synthese['nom_table'] = table_name
-                        synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
+                        if not partie_synthese.empty :
+                            partie_synthese['schema'] = 'RECOL'
+                            partie_synthese['nom_table'] = table_name
+                            partie_synthese['coisement'] = 'CREATION'
+                            synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
                     if table_name in croisement_modification_dict2['RECOL'] :
                         attributs = croisement_modification_dict2['RECOL'][table_name]
-                        ids = set().union(*attributs.values())
+                        ids = set().union(*attributs.values()) if attributs else set()
+                        cols = [field.name() for field in layer.layer().fields()]
                         rules = df_rules[
                             (
                                 (df_rules['nom_niveau'] == 'RECOL') |
@@ -1648,57 +1699,80 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                             ],
                             columns=cols
                         )
-                        partie_synthese = self.layer_admissibilite2( data, rules)
-                        partie_synthese['schema'] = 'RECOL'
-                        partie_synthese['nom_table'] = table_name
-                        synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
-        QgsMessageLog.logMessage(f"{croisement_dict}", "MonPlugin", Qgis.Info)
+                        partie_synthese = self.layer_admissibilite2( data, attributs, rules)
+                        if not partie_synthese.empty :
+                            partie_synthese['schema'] = 'RECOL'
+                            partie_synthese['nom_table'] = table_name
+                            partie_synthese['coisement'] = 'MODIFICATION'
+                            synthese = pd.concat([synthese, partie_synthese], ignore_index=True)
+        user_profile = os.environ.get("USERPROFILE")
+        path = os.path.join(
+            user_profile,
+            "OneDrive - SOREGIES","Bureau")
+        output_file = os.path.join(path, f"{datetime.datetime.now(datetime.timezone.utc).strftime('%Y%m%d_%H%M%S')}synthese.csv")
+        synthese.to_csv(output_file, index=False, sep=';')
+        if not synthese.empty :
+            QgsMessageLog.logMessage(f" synthese : {synthese[['nom_attribut','valeur_refusee']]}", "MonPlugin", Qgis.Info)
     def layer_admissibilite2(self, df, attributs, df_rules) :
         data = []
         for _, rule in df_rules.iterrows():
-            col_name = rule['nom_campobli'].lower()
-            df = df[df['gid'] in attributs[col_name]]
-            valeurs = (
+            col_name = rule['nom_champobli'].lower()
+            df_ = df[df['gid'].isin(attributs[col_name])]
+            """valeurs = (
                     df[col_name]
                     .value_counts(dropna=False)
                     .reset_index()
+            )"""
+            valeurs = (
+                df_.groupby(col_name)
+                .agg(
+                    count=('gid', 'size'),
+                    liste_gid=('gid', list)
+                )
+                .reset_index()
             )
-            valeurs.columns = ['valeur', 'count']
+            valeurs.columns = ['valeur', 'count', 'liste_gid']
             for _, valeur in valeurs.iterrows():
                 if self.test(valeur['valeur'], rule['val_champobli']):
                     data.append({
                             'nom_attribut': rule['nom_champobli'],
                             'valeur_refusee': valeur['valeur'],
                             'valeurs_autorisees': rule['val_champobli'],
-                            'nombre': valeur['count']
+                            'nombre': valeur['count'],
+                            'ids':valeur['liste_gid']
                     })
-
+        return pd.DataFrame(data)
 
     def layer_admissibilite(self, df, df_rules):
         data = []
         for _, rule in df_rules.iterrows():
-            col_name = rule['nom_campobli'].lower()
+            col_name = rule['nom_champobli'].lower()
             if col_name not in df.columns:
                 data.append({
                             'nom_attribut': rule['nom_champobli'],
                             'valeur_refusee': 'attribut manquant',
                             'valeurs_autorisees': rule['val_champobli'],
-                            'nombre': 0
+                            'nombre': 0,
+                            'ids':'[]'
                         })
             else :
                 valeurs = (
-                    df[col_name]
-                    .value_counts(dropna=False)
+                    df.groupby(col_name)
+                    .agg(
+                        count=('gid', 'size'),
+                        liste_gid=('gid', list)
+                    )
                     .reset_index()
                 )
-                valeurs.columns = ['valeur', 'count']
+                valeurs.columns = ['valeur', 'count', 'liste_gid']
                 for _, valeur in valeurs.iterrows():
                     if self.test(valeur['valeur'], rule['val_champobli']):
                         data.append({
                             'nom_attribut': rule['nom_champobli'],
                             'valeur_refusee': valeur['valeur'],
                             'valeurs_autorisees': rule['val_champobli'],
-                            'nombre': valeur['count']
+                            'nombre': valeur['count'],
+                            'ids':valeur['liste_gid']
                         })
 
         return pd.DataFrame(data)
@@ -1711,7 +1785,7 @@ class ControleFoliosDockWidget(QtWidgets.QDockWidget, FORM_CLASS):
                 return True
         else :
             rule = rule.split("|")
-            if val in rule :
+            if str(val) in rule :
                 return False
             else :
                 return True

@@ -4,6 +4,7 @@ from shapely import wkb
 import numpy as np
 import uuid
 from shapely.geometry import LineString
+from decimal import Decimal
 
 from qgis.core import QgsMessageLog, Qgis
 import os
@@ -54,8 +55,8 @@ def explode_lines(gdf):
 
     return df.set_crs(gdf.crs)
 
-def comparer(con, precision):
-
+def comparer(con, precision, log):
+    log('Début des comparaisons ...')
     sql="""
     SELECT table_name 
     FROM information_schema.tables 
@@ -63,7 +64,6 @@ def comparer(con, precision):
     AND table_name!='geo_z_9_0_6'; 
     """
     tables_en_cours_integration=df(sql,con)
-
     sql="""
     SELECT table_schema, table_name
     FROM information_schema.tables 
@@ -72,56 +72,25 @@ def comparer(con, precision):
     """
     tables_res_topo_correspondantes=df(sql,con)
     #Vérification du bon nombre de correspondances
-    if tables_res_topo_correspondantes.shape[0]!=tables_en_cours_integration.shape[0]:
-        print("1/ Attention! Nombres de tables différents")
+    count_tables_exist1=tables_res_topo_correspondantes.shape[0]
+    count_nouv_tables1=tables_en_cours_integration.shape[0]
+    if count_tables_exist1!=count_nouv_tables1:
         tables_res_topo_correspondantes=pd.concat([tables_res_topo_correspondantes.loc[tables_res_topo_correspondantes['table_name'].duplicated(keep=False)==False,:],
                                                 tables_res_topo_correspondantes.loc[(tables_res_topo_correspondantes['table_name'].duplicated(keep=False))&
                                                                                     (tables_res_topo_correspondantes['table_schema']=="sw_pr_res"),:]])
-        if tables_res_topo_correspondantes.shape[0]!=tables_en_cours_integration.shape[0]:
-            print("2/ Attention! Nombres de tables différents")
+        count_tables_exist2=tables_res_topo_correspondantes.shape[0]
+        count_nouv_tables2=tables_en_cours_integration.shape[0]
+        if count_tables_exist2!=count_nouv_tables2:
+            log(f"Attention! {count_nouv_tables2-count_tables_exist2} table(s) de plus dans l'espace temp !",'red')
 
-
+    log("Lecture des tables de la pase de données ...")
     #Données en cours d'intégration
     bd_integration={}
-    for t in tables_en_cours_integration['table_name']:
-        sql = f"""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'recolement'
-                AND table_name = '{t}';
-                """
-        attributs=df(sql,con)
-        attributs = attributs[~attributs['column_name'].isin(['geom', 'numfolio', 'natouv'])]
-        cols = ",".join([f'"{c}"' for c in attributs['column_name']])
-        if t=='geo_r_0_0_1':#points GPS
-            sql = f"""
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'recolement'
-                AND table_name = '{t}';
-                """
-            sql=f"SELECT ST_Normalize(geom) AS geometry, numfolio AS numfolio_recol, natouv,{cols} FROM recolement.{t};"
-        else:
-            sql=f"SELECT ST_Normalize(geom) AS geometry, numfolio AS numfolio_recol,{cols} FROM recolement.{t};"
-        bd_integration[t]=gdf(sql,con,geom_col='geometry')
-        # explode est pour simplifier et reduire le stockage des géométries
-        bd_integration[t]=bd_integration[t].explode(index_parts=True).reset_index(drop=True) 
-        bd_integration[t]['source']='INTEGRATION'
-        #bd_integration[t]['geom']= bd_integration[t]['geom'].buffer(precision) 
-    #Liste des folios impliqués
-    set_folios=set()
-    for t in bd_integration:
-        set_folios=set_folios.union(set(bd_integration[t]['numfolio_recol']))
-    ls_folios=[f for f in set_folios if f!=None]
-    sql="SELECT * FROM recolement.geo_z_9_0_6;"
-    bd_folios=gdf(sql,con)
-    bd_folios=bd_folios.set_crs('epsg:3947',allow_override=True)
-    if bd_folios.shape[0]!=len(ls_folios):
-        print("Attention! Nombres de folios différents")
-        print("Folio(s) sans donnée:",[c for c in list(bd_folios['numfolio']) if c not in set_folios])
     #Données correspondantes présentes en base
     bd_existant={}
+    lignes = []
     for i,li in tables_res_topo_correspondantes.iterrows():
+        
         t,s=li['table_name'],li['table_schema']
         sql = f"""
                 SELECT column_name
@@ -129,9 +98,72 @@ def comparer(con, precision):
                 WHERE table_schema = '{s}'
                 AND table_name = '{t}';
                 """
-        attributs=df(sql,con)
-        attributs = attributs[~attributs['column_name'].isin(['geom', 'numfolio', 'natouv'])]
-        cols = ",".join([f'"{c}"' for c in attributs['column_name']])
+        attributs1=df(sql,con)
+        attributs1 = attributs1[~attributs1['column_name'].isin(['the_geom', 'numfolio', 'natouv','idnum', 'obj_largeur', 'datemaj',
+                                                                                                                'angle',
+                                                                                                                'matricu_',
+                                                                                                                'the_geom',
+                                                                                                                'obj_orientation',
+                                                                                                                'niveau_',
+                                                                                                                'zaval',
+                                                                                                                'zamont',
+                                                                                                                'insee',
+                                                                                                                'ident',
+                                                                                                                'dossier_',
+                                                                                                                'obj_hauteur',
+                                                                                                                'id_editop',
+                                                                                                                'ident_',
+                                                                                                                'obj_matricule'])]
+
+        sql = f"""
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'recolement'
+                AND table_name = '{t}';
+                """
+        attributs2=df(sql,con)
+        attributs2 = attributs2[~attributs2['column_name'].isin(['geom', 'numfolio', 'natouv'])]
+        cols_set1 = set(attributs1['column_name'])
+        cols_set2 = set(attributs2['column_name'])
+        cols_communs = cols_set1 & cols_set2
+        cols = ",".join([f'"{c}"' for c in cols_communs])
+        tables_res_topo_correspondantes.loc[i, 'cols'] = cols
+        manque =cols_set1 - cols_set2
+        if manque:
+            log(f"attributs manquants ({t}) : {manque}", "red")
+            lignes.append([t, manque])
+        if t=='geo_r_0_0_1':#points GPS
+            sql = f'''
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'recolement'
+                AND table_name = '{t}';
+                '''
+            sql=f"SELECT ST_Normalize(geom) AS geometry, numfolio AS numfolio, natouv,{cols} FROM recolement.{t};"
+        else:
+            sql=f"SELECT ST_Normalize(geom) AS geometry, numfolio AS numfolio,{cols} FROM recolement.{t};"
+        bd_integration[t]=gdf(sql,con,geom_col='geometry')
+        # explode est pour simplifier et reduire le stockage des géométries
+        bd_integration[t]=bd_integration[t].explode(index_parts=True).reset_index(drop=True) 
+        bd_integration[t]['source']='INTEGRATION'
+        #bd_integration[t]['geom']= bd_integration[t]['geom'].buffer(precision) 
+    attributs_manquants = pd.DataFrame(lignes, columns=["table", "attributs"])
+    #Liste des folios impliqués
+    set_folios=set()
+    for t in bd_integration:
+        set_folios=set_folios.union(set(bd_integration[t]['numfolio']))
+    ls_folios=[f for f in set_folios if f!=None]
+    sql="SELECT * FROM recolement.geo_z_9_0_6;"
+    bd_folios=gdf(sql,con)
+    bd_folios=bd_folios.set_crs('epsg:3947',allow_override=True)
+    if bd_folios.shape[0]!=len(ls_folios):
+        print("Attention! Nombres de folios différents")
+        print("Folio(s) sans donnée:",[c for c in list(bd_folios['numfolio']) if c not in set_folios]) 
+
+    
+    for i,li in tables_res_topo_correspondantes.iterrows():
+        
+        t,s,cols=li['table_name'],li['table_schema'],li['cols']
         if t=='geo_r_0_0_1':
             sql=f"SELECT ST_Normalize(the_geom) AS geometry, numfolio AS numfolio, natouv,{cols} FROM "+s+"."+t+" WHERE numfolio IN ('"+"','".join(ls_folios)+"');"
         else:
@@ -141,7 +173,8 @@ def comparer(con, precision):
         if bd_existant[t].shape[0]==0:
             continue
         bd_existant[t]=bd_existant[t].explode(index_parts=True).reset_index(drop=True)
-        #bd_existant[t]['geom']=bd_existant[t]['geom'].buffer(precision) 
+    log(f"Lecture des tables est términée !", "green")
+    log("Comparaion des tables ... ")
     
     bd_croisement={}
     for t in bd_integration:
@@ -151,10 +184,10 @@ def comparer(con, precision):
         integration["i_uid"] = [str(uuid.uuid4()) for _ in range(len(integration))]
         existant["e_uid"] = [str(uuid.uuid4()) for _ in range(len(existant))]
 
-        att=['geometry','source','moa','moeuvre','geotopo','daterel','geomori','dur','numvoie','i_uid','alti','hrms','vrms','oriobj']
+        att=['geometry','i_uid','e_uid','source','numfolio']
         ancie_trace = gpd.sjoin(
                 integration.rename(columns=lambda x: x + "_nouv" if x not in att else x),
-                existant.rename(columns=lambda x: x + "_ancie" if x != 'geometry'  and x != 'source' and x != 'e_uid' else x).set_geometry(existant.buffer(precision)),
+                existant.rename(columns=lambda x: x + "_ancie" if x not in att else x).set_geometry(existant.buffer(precision)),
                 predicate="within",
                 how="inner"
             )
@@ -167,6 +200,8 @@ def comparer(con, precision):
         ]
         nvelle_trace['croisement']='CREATION'
         nvelle_trace['attributs_modif'] = None
+        nvelle_trace['modifications'] = None
+        nvelle_trace['gid_ancie'] = None
         nvelle_trace['gid_nouv'] = nvelle_trace['gid']
         ls_a_analyse_temp=[nvelle_trace]
         
@@ -176,7 +211,9 @@ def comparer(con, precision):
             ]
             suppr_trace['croisement']='SUPPRESSION'
             suppr_trace['attributs_modif'] = None
+            suppr_trace['modifications'] = None
             suppr_trace['gid_ancie'] = suppr_trace['gid']
+            suppr_trace['gid_nouv'] = None
             ls_a_analyse_temp.append(suppr_trace)
         
         
@@ -204,26 +241,42 @@ def comparer(con, precision):
             
         bd_croisement[t]=pd.concat(ls_a_analyse_temp)
         bd_croisement[t]['type_obj']=t
-    
+    log("Finalisation des comparaisons ... ")
     bd_croisement_total=pd.concat([bd_croisement[t] for t in bd_croisement])
     
     bd_croisement_total=bd_croisement_total.set_geometry('geometry')
     bd_croisement_total=bd_croisement_total.merge(tables_res_topo_correspondantes,left_on='type_obj',right_on='table_name',how='left')
-    QgsMessageLog.logMessage(f"comparaison projet : {bd_croisement_total.columns}", "MonPlugin", Qgis.Info)
-    if 'projet_nouv' in ['projet_nouv'] : #bd_croisement_total.columns :
+    if 'projet_nouv' in bd_croisement_total.columns :
         bd_croisement_total['projet'] = np.where(
                 (bd_croisement_total['croisement'] == 'CREATION') | (bd_croisement_total['croisement'] == 'SUPPRESSION'),
                 bd_croisement_total['projet'],
                 bd_croisement_total['projet_nouv']  
             )
+    if 'daterel_nouv' in bd_croisement_total.columns :
+        bd_croisement_total['daterel'] = np.where(
+                (bd_croisement_total['croisement'] == 'CREATION') | (bd_croisement_total['croisement'] == 'SUPPRESSION'),
+                bd_croisement_total['daterel'],
+                bd_croisement_total['daterel_nouv']  
+            )
+    if 'natouv_nouv' in bd_croisement_total.columns :
+        bd_croisement_total['natouv'] = np.where(
+                (bd_croisement_total['croisement'] == 'CREATION') | (bd_croisement_total['croisement'] == 'SUPPRESSION'),
+                bd_croisement_total['natouv'],
+                bd_croisement_total['natouv_nouv']  
+            )
+    if 'moeuvre_nouv' in bd_croisement_total.columns :
+        bd_croisement_total['moeuvre'] = np.where(
+                (bd_croisement_total['croisement'] == 'CREATION') | (bd_croisement_total['croisement'] == 'SUPPRESSION'),
+                bd_croisement_total['moeuvre'],
+                bd_croisement_total['moeuvre_nouv']  
+            )
     
-    bd_croisement_total['daterel2'] = bd_croisement_total['daterel']
     bd_croisement_total['daterel'] = pd.to_datetime(bd_croisement_total['daterel'], errors='coerce')
     bd_croisement_total['annee'] = bd_croisement_total['daterel'].dt.strftime("%Y")
     bd_croisement_total['mois'] = bd_croisement_total['daterel'].dt.strftime("%Y/%m")
-    bd_croisement_total=bd_croisement_total[['gid_ancie','gid_nouv','table_schema', 'table_name','projet', 'croisement','natouv', 'numfolio','geometry','attributs_modif', 'modifications','moeuvre','annee','mois','daterel2']]
+    bd_croisement_total=bd_croisement_total[['gid_nouv','table_schema', 'table_name','projet', 'croisement','natouv','geometry','attributs_modif','moeuvre','annee','mois']]
     bd_croisement_total.plot(column='croisement')
-    corres_natouv={'EP':'ep','EL':'elec','GZ':'GAZ'}
+    corres_natouv={'EP':'ep','EL':'elec','GZ':'gaz'}
 
     bd_croisement_total.loc[bd_croisement_total['table_name']=='geo_r_0_0_1',
                             'grpe_objet']=bd_croisement_total.loc[bd_croisement_total['table_name']=='geo_r_0_0_1',
@@ -238,7 +291,7 @@ def comparer(con, precision):
     bd_croisement_total.loc[(bd_croisement_total['table_schema']=='sw_pr_res')&
                             (bd_croisement_total['table_name'].str.match('geo_c_[129]')),'grpe_objet']='elec'
 
-    corres_natouv={'EP':'ep','EL':'elec','GZ':'GAZ'}
+    corres_natouv={'EP':'ep','EL':'elec','GZ':'gaz'}
 
     bd_croisement_total.loc[bd_croisement_total['table_name']=='geo_r_0_0_1',
                             'grpe_objet']=bd_croisement_total.loc[bd_croisement_total['table_name']=='geo_r_0_0_1',
@@ -259,7 +312,7 @@ def attributs_identiques(row, champs):
     modifications = []
     for c in champs:
         v_nouv = row[f"{c}_nouv"]
-        v_ancie = row[f"{c.replace('numfolio_recol', 'numfolio')}_ancie"]
+        v_ancie = row[f"{c}_ancie"]
 
         
         if pd.isna(v_nouv) and pd.isna(v_ancie):
@@ -286,6 +339,8 @@ def attributs_identiques(row, champs):
         return None, None    
     
 def to_float_if_possible(v):
+    if isinstance(v, Decimal):
+        return float(v)
     if isinstance(v, str):
         # remplace virgule par point (format français)
         v = v.replace(',', '.')

@@ -1,0 +1,3 @@
+nom_attribut;valeur_refusee;valeurs_autorisees;nombre;ids;schema;nom_table;coisement
+HRMS;0V1;002|005|010|040|150|999;1;[8];TOPO;geo_r_1_1_2;CREATION
+VRMS;0V1;002|005|010|040|150|999;1;[8];TOPO;geo_r_1_1_2;CREATION
